@@ -10,21 +10,25 @@
 #include "lvgl.h"
 #include "lv_examples.h"
 #include "lv_demos.h"
+#include "ui/screen_manager.h"
+#include "api/api_client.h"
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
 static lv_display_t *display;
 static lv_indev_t *indev_mouse;
-static lv_indev_t *indev_keyboard;
+lv_indev_t *indev_keyboard = NULL;  /* Non-static for reader keyboard input */
+lv_font_t *chinese_font = NULL;  /* Body text font (18px) */
+lv_font_t *chinese_font_large = NULL;  /* Header/title font (26px) */
 
 static void create_test_ui(void)
 {
-    lv_obj_t *label = lv_label_create(lv_screen_active());
-    lv_label_set_text(label, "Hello LVGL!\n微信读书");
-    lv_obj_center(label);
+    /* Initialize API client (must be called before any API requests) */
+    api_client_init();
 
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_48, 0);
+    /* Initialize screen manager - it will show the welcome screen */
+    screen_manager_init();
 }
 
 int main(int argc, char **argv)
@@ -34,6 +38,21 @@ int main(int argc, char **argv)
 
     /* Initialize LVGL */
     lv_init();
+
+    /* Load Chinese fonts using FreeType - two sizes for different contexts */
+    chinese_font = lv_freetype_font_create("/System/Library/Fonts/STHeiti Light.ttc",
+                                           LV_FREETYPE_FONT_RENDER_MODE_BITMAP,
+                                           18,
+                                           LV_FREETYPE_FONT_STYLE_NORMAL);
+    chinese_font_large = lv_freetype_font_create("/System/Library/Fonts/STHeiti Light.ttc",
+                                                  LV_FREETYPE_FONT_RENDER_MODE_BITMAP,
+                                                  26,
+                                                  LV_FREETYPE_FONT_STYLE_NORMAL);
+    if (!chinese_font || !chinese_font_large) {
+        fprintf(stderr, "Warning: Failed to load Chinese font, will use default font\n");
+    } else {
+        printf("Chinese fonts loaded successfully (18px + 26px)\n");
+    }
 
     /* Create SDL2 display */
     display = lv_sdl_window_create(WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -66,6 +85,15 @@ int main(int argc, char **argv)
     while (1) {
         uint32_t time_till_next = lv_timer_handler();
         usleep(time_till_next * 1000);
+    }
+
+    /* Cleanup */
+    api_client_cleanup();
+    if (chinese_font) {
+        lv_freetype_font_delete(chinese_font);
+    }
+    if (chinese_font_large) {
+        lv_freetype_font_delete(chinese_font_large);
     }
 
     return 0;

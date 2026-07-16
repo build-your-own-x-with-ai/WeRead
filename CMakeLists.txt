@@ -14,6 +14,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED sdl2)
 pkg_check_modules(CURL REQUIRED libcurl)
 pkg_check_modules(OPENSSL REQUIRED openssl)
+pkg_check_modules(FREETYPE REQUIRED freetype2)
 
 # LVGL configuration
 set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h CACHE STRING "" FORCE)
@@ -21,7 +22,10 @@ add_compile_definitions(LV_CONF_INCLUDE_SIMPLE)
 
 # LVGL library
 add_subdirectory(lib/lvgl)
-target_include_directories(lvgl PUBLIC ${SDL2_INCLUDE_DIRS})
+target_include_directories(lvgl PUBLIC
+    ${SDL2_INCLUDE_DIRS}
+    ${FREETYPE_INCLUDE_DIRS}
+)
 target_compile_options(lvgl PUBLIC ${SDL2_CFLAGS_OTHER})
 
 # cJSON library
@@ -54,10 +58,7 @@ target_include_directories(weread_lvgl PRIVATE
     ${SDL2_INCLUDE_DIRS}
     ${CURL_INCLUDE_DIRS}
     ${OPENSSL_INCLUDE_DIRS}
-)
-
-target_link_directories(weread_lvgl PRIVATE
-    ${OPENSSL_LIBRARY_DIRS}
+    ${FREETYPE_INCLUDE_DIRS}
 )
 
 target_link_libraries(weread_lvgl PRIVATE
@@ -68,9 +69,17 @@ target_link_libraries(weread_lvgl PRIVATE
     qrcodegen
     ${SDL2_LIBRARIES}
     ${CURL_LIBRARIES}
+    ${FREETYPE_LIBRARIES}
     ssl
     crypto
     m
+)
+
+target_link_directories(weread_lvgl PRIVATE
+    ${SDL2_LIBRARY_DIRS}
+    ${CURL_LIBRARY_DIRS}
+    ${OPENSSL_LIBRARY_DIRS}
+    ${FREETYPE_LIBRARY_DIRS}
 )
 
 target_compile_options(weread_lvgl PRIVATE
