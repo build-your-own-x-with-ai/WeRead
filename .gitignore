@@ -1,0 +1,34 @@
+# Build directories
+build/
+bin/
+lib/
+*.o
+*.a
+*.so
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+*.dSYM/
+
+# Runtime files
+*.log
+cache/
+.cookies
+
+# Downloaded libraries (we copy from WeRead/components)
+# lib/ is already ignored above
