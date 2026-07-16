@@ -154,8 +154,8 @@ static void load_book_detail(const char *book_id)
                             lv_obj_set_width(btn, lv_pct(100));
                             lv_obj_set_height(btn, 44);
                             lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
-                            lv_obj_set_style_border_width(btn, 1, 0);
-                            lv_obj_set_style_border_color(btn, lv_color_hex(0xE7E1D7), 0);
+                            lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+                            lv_obj_set_style_border_width(btn, 0, 0);
                             lv_obj_set_style_pad_all(btn, 4, 0);
                             lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
                             lv_obj_add_event_cb(btn, chapter_click_cb, LV_EVENT_CLICKED, item);
@@ -223,12 +223,14 @@ lv_obj_t *screen_book_detail_create(const char *book_id)
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0xF7F4EF), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(screen, 0, 0);
 
     /* Header */
     lv_obj_t *header = lv_obj_create(screen);
     lv_obj_set_size(header, lv_pct(100), 50);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(header, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(header, 0, 0);
     lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -237,6 +239,7 @@ lv_obj_t *screen_book_detail_create(const char *book_id)
 
     lv_obj_t *back_btn = lv_button_create(header);
     lv_obj_set_size(back_btn, 60, 36);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
     lv_obj_add_event_cb(back_btn, back_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *back_lbl = lv_label_create(back_btn);
     lv_label_set_text(back_lbl, "← 返回");
@@ -246,6 +249,8 @@ lv_obj_t *screen_book_detail_create(const char *book_id)
     read_btn = lv_button_create(header);
     lv_obj_set_size(read_btn, 100, 36);
     lv_obj_set_style_bg_color(read_btn, lv_color_hex(0x07C160), 0);
+    lv_obj_set_style_bg_opa(read_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(read_btn, 0, 0);
     lv_obj_add_event_cb(read_btn, read_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *read_lbl = lv_label_create(read_btn);
     lv_label_set_text(read_lbl, "开始阅读");
@@ -257,8 +262,8 @@ lv_obj_t *screen_book_detail_create(const char *book_id)
     lv_obj_set_size(info_area, lv_pct(95), 120);
     lv_obj_align(info_area, LV_ALIGN_TOP_MID, 0, 55);
     lv_obj_set_style_bg_color(info_area, lv_color_white(), 0);
-    lv_obj_set_style_border_width(info_area, 1, 0);
-    lv_obj_set_style_border_color(info_area, lv_color_hex(0xE7E1D7), 0);
+    lv_obj_set_style_bg_opa(info_area, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(info_area, 0, 0);
 
     title_label = lv_label_create(info_area);
     lv_label_set_text(title_label, "加载中...");
@@ -292,8 +297,8 @@ lv_obj_t *screen_book_detail_create(const char *book_id)
     lv_obj_set_size(chapter_list_widget, lv_pct(95), lv_pct(62));
     lv_obj_align(chapter_list_widget, LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_set_style_bg_color(chapter_list_widget, lv_color_white(), 0);
-    lv_obj_set_style_border_width(chapter_list_widget, 1, 0);
-    lv_obj_set_style_border_color(chapter_list_widget, lv_color_hex(0xE7E1D7), 0);
+    lv_obj_set_style_bg_opa(chapter_list_widget, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(chapter_list_widget, 0, 0);
     lv_obj_set_flex_flow(chapter_list_widget, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scroll_dir(chapter_list_widget, LV_DIR_VER);
     lv_obj_set_style_pad_all(chapter_list_widget, 0, 0);

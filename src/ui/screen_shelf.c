@@ -73,12 +73,14 @@ lv_obj_t *screen_shelf_create(void)
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x1F2421), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(screen, 0, 0);
 
     /* Header */
     lv_obj_t *header = lv_obj_create(screen);
     lv_obj_set_size(header, lv_pct(100), 55);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(header, lv_color_hex(0x1F2421), 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(header, 0, 0);
     lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(header, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -95,6 +97,8 @@ lv_obj_t *screen_shelf_create(void)
     lv_obj_t *discover_btn = lv_button_create(header);
     lv_obj_set_size(discover_btn, 80, 36);
     lv_obj_set_style_bg_color(discover_btn, lv_color_hex(0x07C160), 0);
+    lv_obj_set_style_bg_opa(discover_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(discover_btn, 0, 0);
     lv_obj_add_event_cb(discover_btn, discover_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *discover_lbl = lv_label_create(discover_btn);
     lv_label_set_text(discover_lbl, "发现");
@@ -105,6 +109,8 @@ lv_obj_t *screen_shelf_create(void)
     lv_obj_t *logout_btn = lv_button_create(header);
     lv_obj_set_size(logout_btn, 80, 36);
     lv_obj_set_style_bg_color(logout_btn, lv_color_hex(0xE64340), 0);
+    lv_obj_set_style_bg_opa(logout_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(logout_btn, 0, 0);
     lv_obj_add_event_cb(logout_btn, logout_btn_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *logout_lbl = lv_label_create(logout_btn);
     lv_label_set_text(logout_lbl, "登出");
@@ -116,6 +122,7 @@ lv_obj_t *screen_shelf_create(void)
     lv_obj_set_size(book_list, lv_pct(95), lv_pct(88));
     lv_obj_align(book_list, LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_set_style_bg_color(book_list, lv_color_hex(0x2A2D2A), 0);
+    lv_obj_set_style_bg_opa(book_list, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(book_list, 0, 0);
     lv_obj_set_flex_flow(book_list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scroll_dir(book_list, LV_DIR_VER);
@@ -148,8 +155,8 @@ static void create_book_item_ui(book_item_t *book)
     lv_obj_set_width(book_item, lv_pct(100));
     lv_obj_set_height(book_item, 55);
     lv_obj_set_style_bg_color(book_item, lv_color_hex(0x2A2D2A), 0);
-    lv_obj_set_style_border_width(book_item, 1, 0);
-    lv_obj_set_style_border_color(book_item, lv_color_hex(0x3A3D3A), 0);
+    lv_obj_set_style_bg_opa(book_item, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(book_item, 0, 0);
     lv_obj_set_style_pad_all(book_item, 6, 0);
     lv_obj_add_flag(book_item, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(book_item, book_item_clicked, LV_EVENT_CLICKED, book);
@@ -199,7 +206,9 @@ static void create_book_item_ui(book_item_t *book)
         lv_obj_set_size(progress_bar, 120, 6);
         lv_bar_set_value(progress_bar, book->progress, LV_ANIM_OFF);
         lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x3A3D3A), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(progress_bar, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x07C160), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(progress_bar, LV_OPA_COVER, LV_PART_INDICATOR);
         lv_obj_align(progress_bar, LV_ALIGN_BOTTOM_RIGHT, -5, -3);
 
         char progress_text[16];

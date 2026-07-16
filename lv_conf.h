@@ -162,7 +162,7 @@
 #define LV_USE_FILESYSTEM 1
 #define LV_USE_FS_POSIX  1
 #define LV_USE_FS_STDIO  0
-#define LV_FS_POSIX_LETTER '/'
+#define LV_FS_POSIX_LETTER 'A'
 #define LV_FS_POSIX_PATH "/"
 
 /*==================
