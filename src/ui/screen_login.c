@@ -159,6 +159,7 @@ lv_obj_t *screen_login_create(void)
     /* Create screen */
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0xF7F4EF), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
     /* Title */
     lv_obj_t *title = lv_label_create(screen);

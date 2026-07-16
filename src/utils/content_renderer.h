@@ -21,6 +21,18 @@
 char *render_blocks_to_text(content_block_t *blocks, int count, int width);
 
 /**
+ * Render a range of blocks [start, end) into displayable text.
+ * Skips BLOCK_IMAGE blocks (they are handled separately by the caller).
+ *
+ * @param blocks Array of content blocks
+ * @param start Start index (inclusive)
+ * @param end End index (exclusive)
+ * @param width Display width in characters for text wrapping
+ * @return Newly allocated string (caller must free), or NULL on error
+ */
+char *render_blocks_range(content_block_t *blocks, int start, int end, int width);
+
+/**
  * Parse HTML directly to displayable text (convenience function).
  * Combines parse_html_to_blocks + render_blocks_to_text.
  *

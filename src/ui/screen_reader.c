@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <sys/stat.h>
 
 extern lv_font_t *chinese_font;
 
@@ -20,10 +22,12 @@ extern lv_font_t *chinese_font;
 static lv_obj_t *screen = NULL;
 static lv_obj_t *header_label = NULL;
 static lv_obj_t *content_label = NULL;
+static lv_obj_t *scroll_container = NULL;
 static lv_obj_t *footer_label = NULL;
 static lv_obj_t *boss_overlay = NULL;
 static lv_obj_t *header_container = NULL;
 static lv_obj_t *footer_container = NULL;
+static int image_count = 0;
 
 static char reader_book_id[64] = {0};
 static char reader_book_format[16] = "epub";
@@ -43,6 +47,10 @@ static int reader_chapter_index = 0;
 /* State flags */
 static int boss_mode = 0;
 static int fullscreen_mode = 0;
+
+/* Toast notification for chapter boundary feedback */
+static lv_obj_t *toast_label = NULL;
+static lv_timer_t *toast_timer = NULL;
 
 /* Boss mode fake content (Linux SWAP documentation) */
 static const char *BOSS_FAKE_CONTENT =
@@ -84,6 +92,47 @@ static const char *BOSS_FAKE_CONTENT =
     "  A: 说明内存严重不足，需要增加物理内存或优化应用内存使用\n\n"
     "参考文献: Linux Kernel Documentation, Red Hat Performance Guide\n";
 
+static void toast_timeout_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (toast_label) {
+        lv_obj_del(toast_label);
+        toast_label = NULL;
+    }
+    if (toast_timer) {
+        lv_timer_del(toast_timer);
+        toast_timer = NULL;
+    }
+}
+
+static void show_toast(const char *msg)
+{
+    /* Clean up existing toast */
+    if (toast_timer) {
+        lv_timer_del(toast_timer);
+        toast_timer = NULL;
+    }
+    if (toast_label) {
+        lv_obj_del(toast_label);
+        toast_label = NULL;
+    }
+
+    /* Create centered toast with semi-transparent background */
+    toast_label = lv_label_create(screen);
+    lv_label_set_text(toast_label, msg);
+    if (chinese_font) lv_obj_set_style_text_font(toast_label, chinese_font, 0);
+    lv_obj_set_style_text_color(toast_label, lv_color_white(), 0);
+    lv_obj_set_style_bg_color(toast_label, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_opa(toast_label, LV_OPA_80, 0);
+    lv_obj_set_style_radius(toast_label, 8, 0);
+    lv_obj_set_style_pad_all(toast_label, 12, 0);
+    lv_obj_align(toast_label, LV_ALIGN_CENTER, 0, 0);
+
+    /* Auto-hide after 2 seconds */
+    toast_timer = lv_timer_create(toast_timeout_cb, 2000, NULL);
+    lv_timer_set_repeat_count(toast_timer, 1);
+}
+
 /* Forward declarations */
 static void load_chapter_content(void);
 static void load_chapter_list(void);
@@ -110,17 +159,21 @@ static void reader_key_event_cb(lv_event_t *e)
     switch (key) {
         case LV_KEY_RIGHT:
         case '.':
+            printf("[READER] Next chapter key pressed (index=%d/%d)\n",
+                   reader_chapter_index, reader_chapter_count);
             switch_chapter(1);
             break;
         case LV_KEY_LEFT:
         case ',':
+            printf("[READER] Prev chapter key pressed (index=%d/%d)\n",
+                   reader_chapter_index, reader_chapter_count);
             switch_chapter(-1);
             break;
         case LV_KEY_DOWN:
-            lv_obj_scroll_by(content_label, 0, 150, LV_ANIM_ON);
+            lv_obj_scroll_by(scroll_container, 0, 150, LV_ANIM_ON);
             break;
         case LV_KEY_UP:
-            lv_obj_scroll_by(content_label, 0, -150, LV_ANIM_ON);
+            lv_obj_scroll_by(scroll_container, 0, -150, LV_ANIM_ON);
             break;
         case 'q':
         case 'Q':
@@ -135,10 +188,10 @@ static void reader_key_event_cb(lv_event_t *e)
             toggle_fullscreen();
             break;
         case 'g':
-            lv_obj_scroll_to_y(content_label, 0, LV_ANIM_ON);
+            lv_obj_scroll_to_y(scroll_container, 0, LV_ANIM_ON);
             break;
         case 'G':
-            lv_obj_scroll_to_y(content_label, LV_COORD_MAX, LV_ANIM_ON);
+            lv_obj_scroll_to_y(scroll_container, LV_COORD_MAX, LV_ANIM_ON);
             break;
     }
 }
@@ -205,12 +258,73 @@ static void load_chapter_list(void)
            reader_chapter_count, reader_chapter_index);
 }
 
+/* Parse image file header to get pixel dimensions.
+ * Supports JPEG (SOF marker) and PNG (IHDR chunk).
+ * Returns 0 on success, -1 on failure. */
+static int image_get_dimensions(const char *filepath, int *w, int *h)
+{
+    FILE *fp = fopen(filepath, "rb");
+    if (!fp) return -1;
+
+    uint8_t magic[8];
+    if (fread(magic, 1, 8, fp) != 8) { fclose(fp); return -1; }
+
+    /* Check PNG: 89 50 4E 47 0D 0A 1A 0A */
+    if (magic[0] == 0x89 && magic[1] == 'P' && magic[2] == 'N' && magic[3] == 'G') {
+        /* IHDR chunk: 4 bytes length + 4 bytes "IHDR" + 4 bytes width + 4 bytes height */
+        uint8_t ihdr[16];
+        if (fread(ihdr, 1, 16, fp) == 16) {
+            *w = (ihdr[8] << 24) | (ihdr[9] << 16) | (ihdr[10] << 8) | ihdr[11];
+            *h = (ihdr[12] << 24) | (ihdr[13] << 16) | (ihdr[14] << 8) | ihdr[15];
+            fclose(fp);
+            return (*w > 0 && *h > 0) ? 0 : -1;
+        }
+        fclose(fp);
+        return -1;
+    }
+
+    /* Check JPEG: FF D8 */
+    if (magic[0] != 0xFF || magic[1] != 0xD8) {
+        fclose(fp);
+        return -1;
+    }
+
+    /* Byte-by-byte scan for SOF marker (0xFF + C0-C3/C5-C7/C9-CB/CD-CF).
+     * More robust than chain-following: handles any marker order or unknown markers. */
+    int prev = -1;
+    int ch;
+    while ((ch = fgetc(fp)) != EOF) {
+        if (prev == 0xFF && ch >= 0xC0 && ch <= 0xCF) {
+            /* Check if this is a real SOF (not C4/DHT, C8/JPG, CC/DAC) */
+            if (ch == 0xC4 || ch == 0xC8 || ch == 0xCC) {
+                prev = ch;
+                continue;
+            }
+            /* Found SOF — read frame header: len(2) + precision(1) + height(2) + width(2) */
+            uint8_t sof[7];
+            if (fread(sof, 1, 7, fp) == 7) {
+                *h = (sof[3] << 8) | sof[4];
+                *w = (sof[5] << 8) | sof[6];
+                fclose(fp);
+                printf("[IMG] JPEG SOF 0x%02X: %dx%d\n", ch, *w, *h);
+                return (*w > 0 && *h > 0) ? 0 : -1;
+            }
+            fclose(fp);
+            return -1;
+        }
+        prev = ch;
+    }
+
+    fclose(fp);
+    return -1;
+}
+
+/* Max decoded pixel area: 16MB / 4 bytes (ARGB8888) = ~4M pixels */
+#define MAX_IMAGE_PIXELS    (4 * 1024 * 1024)
+
 /* Load and display chapter content */
 static void load_chapter_content(void)
 {
-    /* Show loading message */
-    lv_label_set_text(content_label, "加载中...");
-
     /* Update header */
     char header_text[300] = "";
     if (reader_chapter_index >= 0 && reader_chapter_index < reader_chapter_count) {
@@ -226,46 +340,187 @@ static void load_chapter_content(void)
              reader_chapter_index + 1, reader_chapter_count);
     lv_label_set_text(footer_label, footer_text);
 
+    /* Remove ALL old children from scroll container FIRST */
+    uint32_t child_cnt = lv_obj_get_child_count(scroll_container);
+    for (int32_t i = (int32_t)child_cnt - 1; i >= 0; i--) {
+        lv_obj_del(lv_obj_get_child(scroll_container, i));
+    }
+    content_label = NULL;
+    image_count = 0;
+
+    /* Create fresh content label (prevents NULL deref on subsequent calls) */
+    content_label = lv_label_create(scroll_container);
+    lv_obj_set_width(content_label, lv_pct(100));
+    lv_label_set_long_mode(content_label, LV_LABEL_LONG_WRAP);
+    if (chinese_font) lv_obj_set_style_text_font(content_label, chinese_font, 0);
+    lv_obj_set_style_text_color(content_label, lv_color_hex(0x1A1A1A), 0);
+    lv_obj_set_style_text_line_space(content_label, 2, 0);
+    lv_obj_set_style_bg_color(content_label, lv_color_hex(0xF7F4EF), 0);
+    lv_obj_set_style_bg_opa(content_label, LV_OPA_COVER, 0);
+    lv_label_set_text(content_label, "加载中...");
+
     /* Fetch and decrypt chapter content */
     char *html = NULL;
     char *style = NULL;
     int ret = api_fetch_chapter_content(reader_book_id, reader_chapter_uid,
                                         reader_book_format, &html, &style);
     if (ret != 0 || !html) {
+        printf("[READER] Chapter %d: API failed (ret=%d, html=%p)\n",
+               reader_chapter_uid, ret, (void *)html);
         lv_label_set_text(content_label, "章节内容加载失败");
         free(html);
         free(style);
         return;
     }
+    printf("[READER] Chapter %d: HTML len=%zu\n", reader_chapter_uid, strlen(html));
 
-    /* Parse HTML and render to display text */
-    printf("[READER] HTML length: %zu\n", strlen(html));
-    char *display_text = html_to_display_text(html, 72);
-    if (display_text) {
-        size_t dlen = strlen(display_text);
-        printf("[READER] Display text length: %zu, first 200 chars: %.200s\n", dlen, display_text);
-        lv_label_set_text(content_label, display_text);
-        free(display_text);
-    } else {
-        printf("[READER] html_to_display_text returned NULL\n");
-        lv_label_set_text(content_label, "内容渲染失败");
+    /* Debug: save raw HTML to file */
+    {
+        char dbg_path[128];
+        snprintf(dbg_path, sizeof(dbg_path), "/tmp/weread_ch%d_html.txt", reader_chapter_uid);
+        FILE *dbg = fopen(dbg_path, "w");
+        if (dbg) { fwrite(html, 1, strlen(html), dbg); fclose(dbg); printf("[READER] Saved HTML -> %s\n", dbg_path); }
     }
 
+    /* Re-cleanup: remove the loading label before rendering real content */
+    child_cnt = lv_obj_get_child_count(scroll_container);
+    for (int32_t i = (int32_t)child_cnt - 1; i >= 0; i--) {
+        lv_obj_del(lv_obj_get_child(scroll_container, i));
+    }
+    content_label = NULL;
+
+    /* Parse HTML to blocks */
+    printf("[READER] HTML length: %zu\n", strlen(html));
+    content_block_t *blocks = NULL;
+    int block_count = 0;
+    parse_html_to_blocks(html, &blocks, &block_count);
+    printf("[READER] Parsed %d blocks\n", block_count);
+    for (int i = 0; i < block_count && i < 20; i++) {
+        printf("[READER]   block[%d] kind=%d text_len=%zu\n", i, blocks[i].kind,
+               blocks[i].text ? strlen(blocks[i].text) : 0);
+    }
+
+    /* Interleaved rendering: walk blocks in order, insert text and images
+     * at their natural positions instead of all-images-at-end. */
+    #define TEXT_CHUNK_LINES 100
+    #define MAX_DISPLAY_IMAGES 20
+
+    /* Helper: add text as chunked labels to scroll_container */
+    int seg_start = 0;  /* start of current text segment */
+
+    for (int i = 0; i <= block_count; i++) {
+        /* Flush text segment when we hit an image or reach the end */
+        int is_image = (i < block_count && blocks[i].kind == BLOCK_IMAGE &&
+                        blocks[i].text && blocks[i].text[0] &&
+                        image_count < MAX_DISPLAY_IMAGES);
+        int is_end = (i == block_count);
+
+        if ((is_image || is_end) && i > seg_start) {
+            /* Render text blocks [seg_start, i) to string */
+            char *seg_text = render_blocks_range(blocks, seg_start, i, 72);
+            if (seg_text && *seg_text) {
+                char *text_ptr = seg_text;
+                while (*text_ptr) {
+                    char *chunk_end = text_ptr;
+                    int lines = 0;
+                    while (*chunk_end && lines < TEXT_CHUNK_LINES) {
+                        if (*chunk_end == '\n') lines++;
+                        chunk_end++;
+                    }
+                    size_t chunk_len = chunk_end - text_ptr;
+                    char *chunk = malloc(chunk_len + 1);
+                    memcpy(chunk, text_ptr, chunk_len);
+                    chunk[chunk_len] = '\0';
+
+                    lv_obj_t *lbl = lv_label_create(scroll_container);
+                    lv_label_set_text(lbl, chunk);
+                    lv_obj_set_width(lbl, lv_pct(100));
+                    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+                    if (chinese_font) lv_obj_set_style_text_font(lbl, chinese_font, 0);
+                    lv_obj_set_style_text_color(lbl, lv_color_hex(0x1A1A1A), 0);
+                    lv_obj_set_style_text_line_space(lbl, 2, 0);
+                    lv_obj_set_style_bg_color(lbl, lv_color_hex(0xF7F4EF), 0);
+                    lv_obj_set_style_bg_opa(lbl, LV_OPA_COVER, 0);
+                    if (!content_label) content_label = lbl;
+                    free(chunk);
+                    text_ptr = chunk_end;
+                }
+            }
+            free(seg_text);
+        }
+
+        if (is_image) {
+            /* Download and display this image at current position */
+            const char *img_url = blocks[i].text;
+            char filepath[256];
+            snprintf(filepath, sizeof(filepath), "/tmp/weread_img_%d_%d_%d.jpg",
+                     reader_chapter_uid, image_count, (int)time(NULL) % 100000);
+
+            if (api_download_image(img_url, filepath) == 0) {
+                int img_w = 0, img_h = 0;
+                if (image_get_dimensions(filepath, &img_w, &img_h) != 0) {
+                    printf("[READER] Skipping unparseable image: %s\n", filepath);
+                    remove(filepath);
+                } else {
+                    long pixels = (long)img_w * img_h;
+                    if (pixels > MAX_IMAGE_PIXELS) {
+                        printf("[READER] Skipping oversized image (%dx%d): %s\n",
+                               img_w, img_h, filepath);
+                        remove(filepath);
+                    } else {
+                        printf("[READER] Image %d at block[%d]: %dx%d\n",
+                               image_count + 1, i, img_w, img_h);
+                        lv_obj_t *img = lv_image_create(scroll_container);
+                        lv_image_set_src(img, filepath);
+                        lv_obj_set_width(img, lv_pct(100));
+                        lv_obj_set_style_radius(img, 4, 0);
+                        lv_obj_set_style_clip_corner(img, true, 0);
+                        lv_obj_invalidate(img);
+                        image_count++;
+                    }
+                }
+            }
+            seg_start = i + 1;  /* next text segment starts after this image */
+        } else if (is_end) {
+            break;
+        }
+    }
+
+    /* Ensure content_label exists even if no text was rendered */
+    if (!content_label) {
+        content_label = lv_label_create(scroll_container);
+        lv_obj_set_width(content_label, lv_pct(100));
+        lv_label_set_long_mode(content_label, LV_LABEL_LONG_WRAP);
+        if (chinese_font) lv_obj_set_style_text_font(content_label, chinese_font, 0);
+        lv_obj_set_style_text_color(content_label, lv_color_hex(0x1A1A1A), 0);
+        lv_obj_set_style_bg_color(content_label, lv_color_hex(0xF7F4EF), 0);
+        lv_obj_set_style_bg_opa(content_label, LV_OPA_COVER, 0);
+        lv_label_set_text(content_label, "");
+    }
+
+    content_blocks_free(blocks, block_count);
+
     /* Scroll to top */
-    lv_obj_scroll_to_y(content_label, 0, LV_ANIM_OFF);
+    lv_obj_scroll_to_y(scroll_container, 0, LV_ANIM_OFF);
 
     free(html);
     free(style);
 
-    printf("[READER] Chapter %d loaded\n", reader_chapter_uid);
+    printf("[READER] Chapter %d loaded (%d images)\n", reader_chapter_uid, image_count);
 }
 
 /* Switch to prev/next chapter */
 static void switch_chapter(int delta)
 {
     int new_index = reader_chapter_index + delta;
-    if (new_index < 0 || new_index >= reader_chapter_count) {
-        printf("[READER] No more chapters in that direction\n");
+    if (new_index < 0) {
+        printf("[READER] Already at first chapter\n");
+        show_toast("已是第一章");
+        return;
+    }
+    if (new_index >= reader_chapter_count) {
+        printf("[READER] Already at last chapter\n");
+        show_toast("已是最后一章");
         return;
     }
 
@@ -320,15 +575,13 @@ static void toggle_fullscreen(void)
     if (fullscreen_mode) {
         lv_obj_add_flag(header_container, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(footer_container, LV_OBJ_FLAG_HIDDEN);
-        /* Expand content to full screen */
-        lv_obj_set_size(content_label, lv_pct(98), lv_pct(98));
-        lv_obj_align(content_label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_size(scroll_container, lv_pct(98), lv_pct(98));
+        lv_obj_align(scroll_container, LV_ALIGN_CENTER, 0, 0);
     } else {
         lv_obj_clear_flag(header_container, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(footer_container, LV_OBJ_FLAG_HIDDEN);
-        /* Restore normal layout */
-        lv_obj_set_size(content_label, lv_pct(95), lv_pct(82));
-        lv_obj_align(content_label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_size(scroll_container, lv_pct(95), lv_pct(82));
+        lv_obj_align(scroll_container, LV_ALIGN_CENTER, 0, 10);
     }
 }
 
@@ -344,6 +597,7 @@ lv_obj_t *screen_reader_create(const char *book_id, int chapter_uid, const char 
 
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0xF7F4EF), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
     /* Enable keyboard events on screen */
     lv_obj_add_flag(screen, LV_OBJ_FLAG_CLICKABLE);
@@ -376,17 +630,25 @@ lv_obj_t *screen_reader_create(const char *book_id, int chapter_uid, const char 
     lv_obj_set_width(header_label, lv_pct(80));
     lv_label_set_long_mode(header_label, LV_LABEL_LONG_DOT);
 
-    /* Content area (scrollable) */
-    content_label = lv_label_create(screen);
-    lv_obj_set_size(content_label, lv_pct(95), lv_pct(82));
-    lv_obj_align(content_label, LV_ALIGN_CENTER, 0, 0);
+    /* Scrollable content container */
+    scroll_container = lv_obj_create(screen);
+    lv_obj_set_size(scroll_container, lv_pct(95), lv_pct(82));
+    lv_obj_align(scroll_container, LV_ALIGN_CENTER, 0, 10);
+    lv_obj_set_flex_flow(scroll_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(scroll_container, LV_DIR_VER);
+    lv_obj_set_style_bg_color(scroll_container, lv_color_hex(0xF7F4EF), 0);
+    lv_obj_set_style_bg_opa(scroll_container, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(scroll_container, 0, 0);
+    lv_obj_set_style_pad_all(scroll_container, 5, 0);
+    lv_obj_set_style_pad_gap(scroll_container, 8, 0);
+
+    /* Content text label (child of scroll container) */
+    content_label = lv_label_create(scroll_container);
+    lv_obj_set_width(content_label, lv_pct(100));
     lv_label_set_long_mode(content_label, LV_LABEL_LONG_WRAP);
     if (chinese_font) lv_obj_set_style_text_font(content_label, chinese_font, 0);
     lv_obj_set_style_text_color(content_label, lv_color_hex(0x1A1A1A), 0);
-    lv_obj_set_scroll_dir(content_label, LV_DIR_VER);
-    lv_obj_set_style_pad_all(content_label, 5, 0);
     lv_obj_set_style_text_line_space(content_label, 2, 0);
-    lv_obj_align(content_label, LV_ALIGN_CENTER, 0, 10);
 
     /* Footer */
     footer_container = lv_obj_create(screen);

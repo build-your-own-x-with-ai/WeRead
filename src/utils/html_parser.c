@@ -163,7 +163,10 @@ int parse_html_to_blocks(const char *html, content_block_t **blocks, int *count)
             memcpy(scan, p, scan_len);
             scan[scan_len] = '\0';
 
-            if (strstr(scan, "standalone=")) {
+            if (strstr(scan, "standalone=") || strstr(scan, "srendalone=") ||
+                strstr(scan, "xmlns:") || strstr(scan, "xm3s=") ||
+                strstr(scan, "encoding=\"utf") || strstr(scan, "encoding='utf") ||
+                strstr(scan, "veT3ion=") || strstr(scan, "8ml")) {
                 const char *term = strstr(p, "?>");
                 if (term && term - p < 500) {
                     p = term + 2;
@@ -247,7 +250,47 @@ int parse_html_to_blocks(const char *html, content_block_t **blocks, int *count)
                     ps->count++;
                 }
             } else if (name_len == 3 && strcasecmp_n(tag_start, "img", 3) == 0 && !is_closing) {
-                /* Skip images entirely — LVGL cannot render them */
+                /* Extract src URL from img tag */
+                const char *src = strstr(tag_start, "src=\"");
+                if (!src) src = strstr(tag_start, "src='");
+                if (src) {
+                    char quote = src[4];
+                    src += 5;
+                    const char *src_end = strchr(src, quote);
+                    if (src_end && src_end - src < 500) {
+                        /* Check URL extension — skip audio/video files */
+                        static const char *skip_exts[] = {
+                            ".mp3", ".wav", ".ogg", ".m4a", ".aac",
+                            ".mp4", ".webm", ".opus", ".flac", NULL
+                        };
+                        int is_media = 0;
+                        int url_len = (int)(src_end - src);
+                        for (int k = 0; skip_exts[k]; k++) {
+                            int ext_len = strlen(skip_exts[k]);
+                            if (url_len >= ext_len) {
+                                /* Check extension (before any query string) */
+                                const char *query = memchr(src, '?', url_len);
+                                int path_len = query ? (int)(query - src) : url_len;
+                                if (path_len >= ext_len &&
+                                    strcasecmp_n(src + path_len - ext_len,
+                                                 skip_exts[k], ext_len) == 0) {
+                                    is_media = 1;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!is_media) {
+                            flush_block(ps);
+                            char url[512];
+                            snprintf(url, sizeof(url), "%.*s", url_len, src);
+                            if (ps->count < MAX_BLOCKS) {
+                                ps->blocks[ps->count].text = strdup(url);
+                                ps->blocks[ps->count].kind = BLOCK_IMAGE;
+                                ps->count++;
+                            }
+                        }
+                    }
+                }
             } else if (!is_closing && is_block_tag(tag_start, name_len)) {
                 /* Block opening tag: flush current text and start new block */
                 flush_block(ps);

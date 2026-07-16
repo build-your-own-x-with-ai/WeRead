@@ -706,3 +706,59 @@ api_response_t *api_get_recommend_books(void)
 {
     return api_get("/web/recommend_books");
 }
+
+/* Image download */
+
+static size_t write_file_cb(void *data, size_t size, size_t nmemb, void *stream)
+{
+    return fwrite(data, size, nmemb, (FILE *)stream);
+}
+
+int api_download_image(const char *url, const char *filepath)
+{
+    if (!url || !filepath || !curl) return -1;
+
+    curl_easy_reset(curl);
+    FILE *fp = fopen(filepath, "wb");
+    if (!fp) return -1;
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_file_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+
+    /* Send cookies for auth */
+    const char *cookies = api_get_cookies();
+    if (cookies[0]) {
+        curl_easy_setopt(curl, CURLOPT_COOKIE, cookies);
+    }
+
+    /* Set User-Agent header */
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers,
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    CURLcode res = curl_easy_perform(curl);
+    fclose(fp);
+    curl_slist_free_all(headers);
+
+    if (res != CURLE_OK) {
+        remove(filepath);
+        printf("[IMG] Download failed: %s\n", curl_easy_strerror(res));
+        return -1;
+    }
+
+    long response_code;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+    if (response_code != 200) {
+        remove(filepath);
+        printf("[IMG] HTTP %ld for %s\n", response_code, url);
+        return -1;
+    }
+
+    printf("[IMG] Downloaded: %s -> %s\n", url, filepath);
+    return 0;
+}

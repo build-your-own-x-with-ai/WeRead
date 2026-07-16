@@ -151,7 +151,8 @@
 #define LV_USE_OBSERVER 0
 #define LV_USE_PNG      0
 #define LV_USE_BMP      0
-#define LV_USE_JPG      0
+#define LV_USE_TJPGD    1
+#define LV_USE_LIBJPEG_TURBO 0
 #define LV_USE_GIF      0
 #define LV_USE_QRCODE   1
 #define LV_USE_FREETYPE 1
@@ -162,13 +163,14 @@
 #define LV_USE_FS_POSIX  1
 #define LV_USE_FS_STDIO  0
 #define LV_FS_POSIX_LETTER '/'
+#define LV_FS_POSIX_PATH "/"
 
 /*==================
  * LOG SETTINGS
  *==================*/
 
 #define LV_USE_LOG      1
-#define LV_LOG_LEVEL    LV_LOG_LEVEL_WARN
+#define LV_LOG_LEVEL    LV_LOG_LEVEL_INFO
 #define LV_LOG_PRINTF   1
 #define LV_LOG_TRACE_MEM        0
 #define LV_LOG_TRACE_TIMER      0

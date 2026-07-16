@@ -163,31 +163,23 @@ static void wrap_and_append(output_buf_t *ob, const char *text, int width, const
     out_append_newline(ob);
 }
 
-char *render_blocks_to_text(content_block_t *blocks, int count, int width)
+static char *render_blocks_range_internal(content_block_t *blocks, int start, int end, int width)
 {
-    if (!blocks || count <= 0) return strdup("");
+    if (!blocks || start >= end) return strdup("");
 
     output_buf_t ob;
     out_init(&ob);
 
-    for (int i = 0; i < count; i++) {
+    for (int i = start; i < end; i++) {
         content_block_t *block = &blocks[i];
 
         switch (block->kind) {
             case BLOCK_H1:
-                wrap_and_append(&ob, block->text, width, "# ");
-                break;
-
             case BLOCK_H2:
-                wrap_and_append(&ob, block->text, width, "## ");
-                break;
-
             case BLOCK_H3:
-                wrap_and_append(&ob, block->text, width, "### ");
-                break;
-
             case BLOCK_H4:
-                wrap_and_append(&ob, block->text, width, "#### ");
+                /* Render heading text without # prefix — cleaner display */
+                wrap_and_append(&ob, block->text, width, NULL);
                 break;
 
             case BLOCK_BLOCKQUOTE:
@@ -214,7 +206,19 @@ char *render_blocks_to_text(content_block_t *blocks, int count, int width)
 
             case BLOCK_P:
                 if (block->text && block->text[0]) {
-                    wrap_and_append(&ob, block->text, width, NULL);
+                    /* Skip leading whitespace before checking for markdown headings */
+                    const char *t = block->text;
+                    while (*t == ' ' || *t == '\t') t++;
+
+                    /* Detect inline markdown headings: # , ## , ### , #### */
+                    int n_hashes = 0;
+                    while (t[n_hashes] == '#' && n_hashes < 6) n_hashes++;
+                    if (n_hashes >= 1 && n_hashes <= 4 && t[n_hashes] == ' ') {
+                        /* Render as heading without # prefix */
+                        wrap_and_append(&ob, t + n_hashes + 1, width, NULL);
+                    } else {
+                        wrap_and_append(&ob, block->text, width, NULL);
+                    }
                 }
                 break;
 
@@ -225,6 +229,16 @@ char *render_blocks_to_text(content_block_t *blocks, int count, int width)
     }
 
     return ob.buf;
+}
+
+char *render_blocks_to_text(content_block_t *blocks, int count, int width)
+{
+    return render_blocks_range_internal(blocks, 0, count, width);
+}
+
+char *render_blocks_range(content_block_t *blocks, int start, int end, int width)
+{
+    return render_blocks_range_internal(blocks, start, end, width);
 }
 
 char *html_to_display_text(const char *html, int width)

@@ -210,4 +210,12 @@ api_response_t *api_read_update(const char *book_id, int chapter_uid,
                                 int chapter_offset, int percent,
                                 const char *reader_token);
 
+/**
+ * Download an image from URL to a local file
+ * @param url The image URL
+ * @param filepath Local path to save the image
+ * @return 0 on success, -1 on error
+ */
+int api_download_image(const char *url, const char *filepath);
+
 #endif /* API_CLIENT_H */

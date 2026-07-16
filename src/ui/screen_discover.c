@@ -306,6 +306,7 @@ lv_obj_t *screen_discover_create(void)
 
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0xF7F4EF), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
     /* Header with back button and title */
     lv_obj_t *header = lv_obj_create(screen);

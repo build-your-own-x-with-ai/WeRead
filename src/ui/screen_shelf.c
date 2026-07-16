@@ -72,6 +72,7 @@ lv_obj_t *screen_shelf_create(void)
     /* Create screen */
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x1F2421), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
     /* Header */
     lv_obj_t *header = lv_obj_create(screen);
@@ -128,6 +129,86 @@ lv_obj_t *screen_shelf_create(void)
     lv_obj_add_flag(loading_spinner, LV_OBJ_FLAG_HIDDEN);
 
     return screen;
+}
+
+/* Sort books by readUpdateTime descending (newest first) */
+static int compare_books_by_time(const void *a, const void *b)
+{
+    const book_item_t *ba = (const book_item_t *)a;
+    const book_item_t *bb = (const book_item_t *)b;
+    if (bb->read_update_time > ba->read_update_time) return 1;
+    if (bb->read_update_time < ba->read_update_time) return -1;
+    return 0;
+}
+
+/* Create UI for a single book item */
+static void create_book_item_ui(book_item_t *book)
+{
+    lv_obj_t *book_item = lv_obj_create(book_list);
+    lv_obj_set_width(book_item, lv_pct(100));
+    lv_obj_set_height(book_item, 55);
+    lv_obj_set_style_bg_color(book_item, lv_color_hex(0x2A2D2A), 0);
+    lv_obj_set_style_border_width(book_item, 1, 0);
+    lv_obj_set_style_border_color(book_item, lv_color_hex(0x3A3D3A), 0);
+    lv_obj_set_style_pad_all(book_item, 6, 0);
+    lv_obj_add_flag(book_item, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(book_item, book_item_clicked, LV_EVENT_CLICKED, book);
+
+    /* Book title */
+    lv_obj_t *ttl_lbl = lv_label_create(book_item);
+    lv_label_set_text(ttl_lbl, book->title);
+    if (chinese_font) lv_obj_set_style_text_font(ttl_lbl, chinese_font, 0);
+    lv_obj_set_style_text_color(ttl_lbl, lv_color_white(), 0);
+    lv_obj_align(ttl_lbl, LV_ALIGN_TOP_LEFT, 5, 3);
+    lv_label_set_long_mode(ttl_lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(ttl_lbl, lv_pct(70));
+
+    /* Author */
+    if (book->author[0] != '\0') {
+        lv_obj_t *author_label = lv_label_create(book_item);
+        lv_label_set_text(author_label, book->author);
+        if (chinese_font) lv_obj_set_style_text_font(author_label, chinese_font, 0);
+        lv_obj_set_style_text_color(author_label, lv_color_hex(0xCCCCCC), 0);
+        lv_obj_align(author_label, LV_ALIGN_BOTTOM_LEFT, 5, -3);
+    }
+
+    /* Status badge */
+    char status_text[64] = "";
+    if (book->finish_reading) {
+        snprintf(status_text, sizeof(status_text), "✓ 已读完");
+    } else if (book->read_update_time > 0) {
+        time_t t = (time_t)book->read_update_time;
+        struct tm *tm_info = localtime(&t);
+        if (tm_info) {
+            snprintf(status_text, sizeof(status_text), "最后阅读: %02d-%02d",
+                     tm_info->tm_mon + 1, tm_info->tm_mday);
+        }
+    }
+    if (status_text[0]) {
+        lv_obj_t *status_lbl = lv_label_create(book_item);
+        lv_label_set_text(status_lbl, status_text);
+        if (chinese_font) lv_obj_set_style_text_font(status_lbl, chinese_font, 0);
+        lv_obj_set_style_text_color(status_lbl,
+            book->finish_reading ? lv_color_hex(0x07C160) : lv_color_hex(0x999999), 0);
+        lv_obj_align(status_lbl, LV_ALIGN_TOP_RIGHT, -5, 3);
+    }
+
+    /* Progress bar */
+    if (book->progress > 0) {
+        lv_obj_t *progress_bar = lv_bar_create(book_item);
+        lv_obj_set_size(progress_bar, 120, 6);
+        lv_bar_set_value(progress_bar, book->progress, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x3A3D3A), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x07C160), LV_PART_INDICATOR);
+        lv_obj_align(progress_bar, LV_ALIGN_BOTTOM_RIGHT, -5, -3);
+
+        char progress_text[16];
+        snprintf(progress_text, sizeof(progress_text), "%d%%", book->progress);
+        lv_obj_t *prog_lbl = lv_label_create(book_item);
+        lv_label_set_text(prog_lbl, progress_text);
+        lv_obj_set_style_text_color(prog_lbl, lv_color_hex(0xCCCCCC), 0);
+        lv_obj_align(prog_lbl, LV_ALIGN_BOTTOM_RIGHT, -135, -2);
+    }
 }
 
 void screen_shelf_load_books(void)
@@ -193,14 +274,13 @@ void screen_shelf_load_books(void)
     book_count = 0;
     lv_obj_clean(book_list);
 
-    /* Iterate through books */
+    /* Phase 1: Parse all books into array */
     cJSON *book_json = NULL;
     cJSON_ArrayForEach(book_json, books_array) {
         if (book_count >= MAX_BOOKS) break;
 
         book_item_t *book = &books[book_count];
 
-        /* Extract book data */
         cJSON *book_id = cJSON_GetObjectItem(book_json, "bookId");
         cJSON *title = cJSON_GetObjectItem(book_json, "title");
         cJSON *author = cJSON_GetObjectItem(book_json, "author");
@@ -225,80 +305,23 @@ void screen_shelf_load_books(void)
         book->finish_reading = finish_obj ? finish_obj->valueint : 0;
         book->read_update_time = read_time_obj ? (int64_t)read_time_obj->valuedouble : 0;
 
-        /* Create book item UI */
-        lv_obj_t *book_item = lv_obj_create(book_list);
-        lv_obj_set_width(book_item, lv_pct(100));
-        lv_obj_set_height(book_item, 55);
-        lv_obj_set_style_bg_color(book_item, lv_color_hex(0x2A2D2A), 0);
-        lv_obj_set_style_border_width(book_item, 1, 0);
-        lv_obj_set_style_border_color(book_item, lv_color_hex(0x3A3D3A), 0);
-        lv_obj_set_style_pad_all(book_item, 6, 0);
-        lv_obj_add_flag(book_item, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(book_item, book_item_clicked, LV_EVENT_CLICKED, book);
-
-        /* Book title */
-        lv_obj_t *ttl_lbl = lv_label_create(book_item);
-        lv_label_set_text(ttl_lbl, book->title);
-        if (chinese_font) lv_obj_set_style_text_font(ttl_lbl, chinese_font, 0);
-        lv_obj_set_style_text_color(ttl_lbl, lv_color_white(), 0);
-        lv_obj_align(ttl_lbl, LV_ALIGN_TOP_LEFT, 5, 3);
-        lv_label_set_long_mode(ttl_lbl, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(ttl_lbl, lv_pct(70));
-
-        /* Author */
-        if (book->author[0] != '\0') {
-            lv_obj_t *author_label = lv_label_create(book_item);
-            lv_label_set_text(author_label, book->author);
-            if (chinese_font) lv_obj_set_style_text_font(author_label, chinese_font, 0);
-            lv_obj_set_style_text_color(author_label, lv_color_hex(0xCCCCCC), 0);
-            lv_obj_align(author_label, LV_ALIGN_BOTTOM_LEFT, 5, -3);
-        }
-
-        /* Status badge (finished or last read date) */
-        char status_text[64] = "";
-        if (book->finish_reading) {
-            snprintf(status_text, sizeof(status_text), "✓ 已读完");
-        } else if (book->read_update_time > 0) {
-            time_t t = (time_t)book->read_update_time;
-            struct tm *tm_info = localtime(&t);
-            if (tm_info) {
-                snprintf(status_text, sizeof(status_text), "最后阅读: %02d-%02d",
-                         tm_info->tm_mon + 1, tm_info->tm_mday);
-            }
-        }
-        if (status_text[0]) {
-            lv_obj_t *status_lbl = lv_label_create(book_item);
-            lv_label_set_text(status_lbl, status_text);
-            if (chinese_font) lv_obj_set_style_text_font(status_lbl, chinese_font, 0);
-            lv_obj_set_style_text_color(status_lbl,
-                book->finish_reading ? lv_color_hex(0x07C160) : lv_color_hex(0x999999), 0);
-            lv_obj_align(status_lbl, LV_ALIGN_TOP_RIGHT, -5, 3);
-        }
-
-        /* Progress bar */
-        if (book->progress > 0) {
-            lv_obj_t *progress_bar = lv_bar_create(book_item);
-            lv_obj_set_size(progress_bar, 120, 6);
-            lv_bar_set_value(progress_bar, book->progress, LV_ANIM_OFF);
-            lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x3A3D3A), LV_PART_MAIN);
-            lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x07C160), LV_PART_INDICATOR);
-            lv_obj_align(progress_bar, LV_ALIGN_BOTTOM_RIGHT, -5, -3);
-
-            char progress_text[16];
-            snprintf(progress_text, sizeof(progress_text), "%d%%", book->progress);
-            lv_obj_t *prog_lbl = lv_label_create(book_item);
-            lv_label_set_text(prog_lbl, progress_text);
-            lv_obj_set_style_text_color(prog_lbl, lv_color_hex(0xCCCCCC), 0);
-            lv_obj_align(prog_lbl, LV_ALIGN_BOTTOM_RIGHT, -135, -2);
-        }
-
         book_count++;
+    }
+
+    /* Phase 2: Sort by readUpdateTime descending (newest first) */
+    if (book_count > 1) {
+        qsort(books, book_count, sizeof(book_item_t), compare_books_by_time);
+    }
+
+    /* Phase 3: Create UI elements in sorted order */
+    for (int i = 0; i < book_count; i++) {
+        create_book_item_ui(&books[i]);
     }
 
     cJSON_Delete(json);
     lv_obj_add_flag(loading_spinner, LV_OBJ_FLAG_HIDDEN);
 
-    printf("[SHELF] Loaded %d books\n", book_count);
+    printf("[SHELF] Loaded %d books (sorted by recent)\n", book_count);
 }
 
 void screen_shelf_set_book_callback(void (*callback)(const char *book_id))
